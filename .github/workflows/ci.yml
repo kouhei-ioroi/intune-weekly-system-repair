@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  syntax-check:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check PowerShell syntax
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Path Source -Filter *.ps1 -Recurse
+          $hasError = $false
+
+          foreach ($file in $files) {
+            $errors = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseFile(
+              $file.FullName,
+              [ref]$null,
+              [ref]$errors
+            )
+
+            if ($errors.Count -gt 0) {
+              Write-Error "Syntax error(s) in $($file.Name):"
+              $errors | ForEach-Object { Write-Error "  Line $($_.Extent.StartLineNumber): $($_.Message)" }
+              $hasError = $true
+            } else {
+              Write-Host "OK: $($file.Name)"
+            }
+          }
+
+          if ($hasError) { exit 1 }
+
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Package with IntuneWinAppUtil
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool/raw/refs/heads/master/IntuneWinAppUtil.exe" -OutFile "IntuneWinAppUtil.exe"
+          New-Item -ItemType Directory -Path output -Force | Out-Null
+          .\IntuneWinAppUtil.exe `
+            -c Source `
+            -s Register-Task.ps1 `
+            -o output `
+            -q
+
+      - name: Upload artifact (main branch)
+        if: github.ref_type == 'branch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: intunewin-${{ github.sha }}
+          path: output/*.intunewin
+          retention-days: 7

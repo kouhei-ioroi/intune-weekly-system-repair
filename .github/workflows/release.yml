@@ -1,0 +1,36 @@
+name: Build and Attach Assets
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-attach:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Package with IntuneWinAppUtil
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/microsoft/Microsoft-Win32-Content-Prep-Tool/raw/refs/heads/master/IntuneWinAppUtil.exe" -OutFile "IntuneWinAppUtil.exe"
+          New-Item -ItemType Directory -Path output -Force | Out-Null
+          .\IntuneWinAppUtil.exe `
+            -c Source `
+            -s Register-Task.ps1 `
+            -o output `
+            -q
+
+      - name: Copy Verify.ps1
+        shell: pwsh
+        run: Copy-Item -Path Verify.ps1 -Destination output\
+
+      - name: Attach Assets to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: output/*
